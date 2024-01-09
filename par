@@ -1,0 +1,157 @@
+import requests
+from bs4 import BeautifulSoup
+import tkinter as tk
+
+# Функция для получения HTML-кода страницы
+def get_html(url):
+    headers = {'Accept-Encoding': 'identity'}  # Добавляем заголовок Accept-Encoding
+    response = requests.get(url, headers=headers)
+    return response.text
+
+# Функция для парсинга информации о товарах
+def parse_data(html, site, item):
+    soup = BeautifulSoup(html, 'html.parser')
+
+    found_items = []
+
+    if site == 'Wildberries':
+        products = soup.find_all('div', class_='dtList i-dtList j-card-item')
+        for product in products:
+            name = product.find('div', class_='dtlist-inner-brand-name').text
+            price = product.find('span', class_='price').text
+            delivery = product.find('div', class_='delivery').text
+            rating = product.find('div', class_='rate').text
+            if item.lower() in name.lower():
+                found_items.append((site, name, price, delivery, rating))
+
+    elif site == 'Ozon':
+        products = soup.find_all('div', class_='a0c6')
+        for product in products:
+            name = product.find('a', class_='a0b8').text.strip()
+            price = product.find('span', class_='a0d7').text.strip()
+            delivery = product.find('div', class_='a0e3').text.strip()
+            rating = product.find('span', class_='a0e5').text.strip()
+            if item.lower() in name.lower():
+                found_items.append((site, name, price, delivery, rating))
+
+    elif site == 'AliExpress':
+        products = soup.find_all('div', class_='JIIxO')
+        for product in products:
+            name = product.find('a', class_='product-title').text.strip()
+            price = product.find('span', class_='a-price').text.strip()
+            delivery = product.find('span', class_='a-delivery').text.strip()
+            rating = product.find('span', class_='a-rating').text.strip()
+            if item.lower() in name.lower():
+                found_items.append((site, name, price, delivery, rating))
+
+    elif site == 'KazanExpress':
+        products = soup.find_all('div', class_='product-item')
+        for product in products:
+            name = product.find('div', class_='name').text.strip()
+            price = product.find('span', class_='price').text.strip()
+            delivery = product.find('div', class_='delivery-time').text.strip()
+            rating = product.find('div', class_='rating').text.strip()
+            if item.lower() in name.lower():
+                found_items.append((site, name, price, delivery, rating))
+
+    elif site == 'Yandex.Market':
+        products = soup.find_all('div', class_='n-snippet-card2')
+        for product in products:
+            name = product.find('div', class_='n-snippet-card2__title').text.strip()
+            price = product.find('div', class_='price').text.strip()
+            delivery = product.find('div', class_='delivery').text.strip()
+            rating = product.find('div', class_='rating').text.strip()
+            if item.lower() in name.lower():
+                found_items.append((site, name, price, delivery, rating))
+
+    return found_items
+
+def search_items():
+    item = entry.get()  # Получаем значение из поля ввода
+    print("Вы ищете товар:", item)
+
+    urls = {
+        'Wildberries': 'https://www.wildberries.ru/catalog/0/search.aspx?search=', https://www.wildberries.ru/catalog/0/search.aspx?search=kingston%20a400
+        'Ozon': 'https://www.ozon.ru/search/?text=', https://www.ozon.ru/search/?text=kingstone+a400
+        'AliExpress': 'https://aliexpress.ru/wholesale?SearchText=', https://aliexpress.ru/wholesale?SearchText=kingston+a400
+        'KazanExpress': 'https://kazanexpress.ru/search?query=', https://kazanexpress.ru/search?query=kingston%20a400
+        'Yandex.Market': 'https://market.yandex.ru/search?text=' https://market.yandex.ru/search?text=kingston%20a400
+    } 
+
+    found_items = []
+    item_counts = {}
+
+    for site, url in urls.items():
+        full_url = url + item.replace(' ', '+')
+        html = get_html(full_url)
+        items = parse_data(html, site, item)
+        found_items.extend(items)
+
+        # Подсчет количества вхождений товара
+        for item in items:
+            item_name = item[1]
+            if item_name in item_counts:
+                item_counts[item_name] += 1
+            else:
+                item_counts[item_name] = 1
+
+    # Очистка ранее отображенных результатов
+    for widget in result_frame.winfo_children():
+        widget.destroy()
+
+    if found_items:
+        # Находим самый популярный товар
+        popular_item = max(item_counts, key=item_counts.get)
+
+        for i, found_item in enumerate(found_items):
+            if found_item[1] == popular_item:
+                site_label = tk.Label(result_frame, text="Сайт: " + found_item[0])
+                site_label.grid(row=0, column=0, sticky='w')
+
+                name_label = tk.Label(result_frame, text="Название товара: " + found_item[1])
+                name_label.grid(row=1, column=0, sticky='w')
+
+                price_label = tk.Label(result_frame, text="Цена товара: " + found_item[2])
+                price_label.grid(row=2, column=0, sticky='w')
+
+                delivery_label = tk.Label(result_frame, text="Срок доставки: " + found_item[3])
+                delivery_label.grid(row=3, column=0, sticky='w')
+
+                rating_label = tk.Label(result_frame, text="Рейтинг товара: " + found_item[4])
+                rating_label.grid(row=4, column=0, sticky='w')
+                break
+
+        print("Самый популярный товар:", popular_item)
+        print("Результаты поиска:")
+        for item in found_items:
+            print("Сайт:", item[0])
+            print("Название товара:", item[1])
+            print("Цена товара:", item[2])
+            print("Срок доставки:", item[3])
+            print("Рейтинг товара:", item[4])
+            print("-----------------------")
+    else:
+        no_items_label = tk.Label(result_frame, text="Товары не найдены.")
+        no_items_label.pack()
+
+    print("=======================")
+
+# Создаем графический интерфейс с полем ввода и кнопкой
+window = tk.Tk()
+window.title("Поиск и сравнение товаров")
+window.geometry("400x400")
+
+label = tk.Label(window, text="Введите товар:")
+label.pack()
+
+entry = tk.Entry(window, width=30)
+entry.pack()
+
+button = tk.Button(window, text="Поиск", command=search_items)
+button.pack()
+
+# Фрейм для отображения результатов поиска
+result_frame = tk.Frame(window)
+result_frame.pack()
+
+window.mainloop()

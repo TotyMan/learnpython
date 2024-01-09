@@ -1,0 +1,112 @@
+import logging
+from datetime import datetime, timedelta
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import Updater, CommandHandler, MessageHandler, ConversationHandler, CallbackContext, Filters
+
+
+TOKEN = "токен для бота"
+
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+
+START, CHOOSE_START, CHOOSE_END, SHOW_RESULT = range(4)
+
+start_time = None
+end_time = None
+current_update_interval = 10  
+stop_thread = False  
+
+def start(update: Update, context: CallbackContext) -> int:
+    keyboard = [
+        [KeyboardButton("Начало отсчета"), KeyboardButton("Конец отсчета")],
+        [KeyboardButton("Показать результат"), KeyboardButton("Сбросить")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    update.message.reply_text('Привет! Давай начнем. Используй "Начало отсчета", чтобы выбрать время начала.', reply_markup=reply_markup)
+    return CHOOSE_START
+
+def choose_start(update: Update, context: CallbackContext) -> int:
+    context.user_data['start'] = True
+    update.message.reply_text('Введите время начала (в формате ЧЧ:ММ):')
+    return CHOOSE_END
+
+def choose_end(update: Update, context: CallbackContext) -> int:
+    context.user_data['start'] = False
+    update.message.reply_text('Теперь нажмите "Конец отсчета", чтобы ввести время окончания.')
+    return CHOOSE_END
+
+def set_time(update: Update, context: CallbackContext) -> int:
+    global start_time, end_time
+    selected_time_str = update.message.text.strip()
+    try:
+        selected_time = datetime.strptime(selected_time_str, '%H:%M')
+    except ValueError:
+        update.message.reply_text('Некорректный формат времени. Используйте формат ЧЧ:ММ.')
+        return CHOOSE_END if context.user_data['start'] else SHOW_RESULT
+
+    context.user_data['selected_time'] = selected_time
+    if context.user_data['start']:
+        start_time = selected_time
+    else:
+        end_time = selected_time
+    update.message.reply_text(f'Время {"начала" if context.user_data["start"] else "окончания"} установлено: {selected_time.strftime("%H:%M")}')
+    return SHOW_RESULT if context.user_data['start'] else ConversationHandler.END
+
+def show_result(update: Update, context: CallbackContext) -> int:
+    global start_time, end_time, current_update_interval, stop_thread
+    if start_time and end_time:
+        duration = end_time - start_time
+        update.message.reply_text(f'Вам осталось {duration} - это как два раза по {duration / 2}.')
+        
+        
+        context.job_queue.run_repeating(update_remaining_time, interval=current_update_interval, context=update)
+    else:
+        update.message.reply_text('Необходимо установить время начала и конца с помощью "Начало отсчета" и "Конец отсчета".')
+    return ConversationHandler.END
+
+def update_remaining_time(update: Update, context: CallbackContext) -> None:
+    global start_time, end_time, current_update_interval
+    remaining_time = end_time - datetime.now()
+    if remaining_time.total_seconds() > 0:
+        hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+        update.message.reply_text(f'Осталось {hours} часов {minutes} минут - это как два раза по {hours / 2} часа {minutes / 2} минут.')
+
+def reset(update: Update, context: CallbackContext) -> int:
+    global start_time, end_time, stop_thread
+    start_time = None
+    end_time = None
+    stop_thread = True  
+    keyboard = [
+        [KeyboardButton("Начало отсчета"), KeyboardButton("Конец отсчета")],
+        [KeyboardButton("Показать результат"), KeyboardButton("Сбросить")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    update.message.reply_text('Состояние бота успешно сброшено.', reply_markup=reply_markup)
+    return START  
+
+def main() -> None:
+    updater = Updater(TOKEN)
+
+    dp = updater.dispatcher
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            CHOOSE_START: [MessageHandler(Filters.regex('Начало отсчета'), choose_start)],
+            CHOOSE_END: [MessageHandler(Filters.regex('Конец отсчета'), choose_end)],
+            SHOW_RESULT: [MessageHandler(Filters.text & ~Filters.command, set_time)],
+        },
+        fallbacks=[CommandHandler('show_result', show_result)],
+    )
+
+    dp.add_handler(conv_handler)
+    dp.add_handler(CommandHandler('reset', reset))
+    dp.add_handler(CommandHandler('start', start))  
+
+    updater.start_polling()
+
+    updater.idle()
+
+if __name__ == '__main__':
+    main()

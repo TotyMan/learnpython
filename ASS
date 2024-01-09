@@ -1,0 +1,142 @@
+import webbrowser
+import pyttsx3
+import speech_recognition as sr
+import wikipedia
+import requests
+import json
+import datetime
+import tkinter as tk
+from tkinter import ttk
+import os
+
+# Создаем экземпляр класса Recognizer
+r = sr.Recognizer()
+
+# Инициализируем движок синтеза речи
+engine = pyttsx3.init()
+
+# Функция для воспроизведения речи
+def speak(text):
+    engine.say(text)
+    engine.runAndWait()
+
+# Функция для распознавания голоса
+def recognize_speech():
+    with sr.Microphone() as source:
+        print("Слушаю...")
+        audio = r.listen(source)
+    try:
+        print("Распознаю...")
+        query = r.recognize_google(audio, language="ru-RU")
+        print("Вы сказали:", query)
+        return query
+    except sr.UnknownValueError:
+        print("Не удалось распознать речь.")
+        return ""
+    except sr.RequestError as e:
+        print("Ошибка запроса к сервису распознавания речи; {0}".format(e))
+        return ""
+
+# Функция для выполнения команды
+def execute_command(command):
+    command = command.lower()
+    
+    if "включи браузер" in command:
+        speak("Открываю браузер")
+        webbrowser.open("https://www.google.com")
+    
+    elif "включи ютуб" in command:
+        speak("Открываю YouTube")
+        webbrowser.open("https://www.youtube.com")
+    
+    elif "скажи погоду" in command:
+        city = "Ufa"
+        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid=eb44ff263802f8a99029190ec8f759dd&units=metric"
+        response = requests.get(url)
+        data = json.loads(response.text)
+        temperature = data["main"]["temp"]
+        description = data["weather"][0]["description"]
+        speak(f"Температура в {city}: {temperature} градусов Цельсия. {description}")
+    
+    elif "открой приложение" in command:
+        speak("Какое приложение открыть?")
+        app_name = recognize_speech()
+        app_name = app_name.lower()
+        app_found = False
+        
+        if "почта" in app_name:
+            speak("Открываю почту")
+            os.startfile("путь_к_почтовому_клиенту")
+            app_found = True
+        
+        elif "календарь" in app_name:
+            speak("Открываю календарь")
+            os.startfile("путь_к_календарю")
+            app_found = True
+        
+        # Добавьте другие приложения по аналогии
+        
+        if not app_found:
+            speak("Не удалось найти указанное приложение")
+    
+    elif "поиск" in command:
+        speak("Что вы хотите найти?")
+        search_query = recognize_speech()
+        results = wikipedia.search(search_query)
+        if len(results) > 0:
+            page = wikipedia.page(results[0])
+            summary = wikipedia.summary(results[0], sentences=2)
+            speak(f"Вот краткая информация: {summary}")
+        else:
+            speak("Не удалось найти информацию по вашему запросу.")
+    
+    elif "справка" in command:
+        help_text = """
+        Вот список доступных команд:
+        - Включи браузер: открывает браузер.
+        - Включи ютуб: открывает YouTube.
+        - Скажи погоду: показывает текущую погоду.
+        - Открой приложение: открывает указанное приложение.
+        - Поиск: выполняет поиск и выводит краткую информацию.
+        - Справка: показывает список всех команд.
+        """
+        speak(help_text)
+    
+    else:
+        speak("Команда не распознана. Пожалуйста, повторите.")
+
+# Создаем графический интерфейс с полем для ввода команд
+root = tk.Tk()
+root.title("Голосовой ассистент")
+
+input_frame = ttk.Frame(root)
+input_frame.pack(pady=10)
+
+input_label = ttk.Label(input_frame, text="Введите команду:")
+input_label.grid(row=0, column=0)
+
+input_entry = ttk.Entry(input_frame, width=40)
+input_entry.grid(row=0, column=1)
+
+# Функция для выполнения команды по нажатию кнопки
+def execute_button_command():
+    command = input_entry.get()
+    execute_command(command)
+    input_entry.delete(0, tk.END)
+
+button_frame = ttk.Frame(root)
+button_frame.pack(pady=10)
+
+execute_button = ttk.Button(button_frame, text="Выполнить", command=execute_button_command)
+execute_button.pack()
+
+# Активируем голосовое управление
+def activate_voice_control():
+    voice_activation_enabled = True
+    while voice_activation_enabled:
+        speak("Скажите команду...")
+        command = recognize_speech()
+        execute_command(command)
+
+# Запускаем главный цикл программы
+root.mainloop()

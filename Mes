@@ -1,0 +1,194 @@
+import socket
+import threading
+import sqlite3
+import re
+from tkinter import *
+from random import randint
+import smtplib
+from email.mime.text import MIMEText
+
+# Функция для отправки сообщений
+def send_message():
+    message = entry.get()
+    if message:
+        client_socket.send(message.encode('utf-8'))
+        entry.delete(0, END)
+
+# Функция для получения сообщений
+def receive_messages():
+    while True:
+        try:
+            message = client_socket.recv(1024).decode('utf-8')
+            if message:
+                text_box.insert(END, message + '\n')
+                text_box.see(END)
+        except:
+            break
+
+# Функция для авторизации пользователя
+def login():
+    username = entry_username.get()
+    password = entry_password.get()
+    if username and password:
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username=?", (username,))
+        result = c.fetchone()
+        if result:
+            saved_password = result[2]  # Пароль пользователя из базы данных
+            if password == saved_password:
+                global client_socket
+                client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_socket.connect(('localhost', 1234))  # Замените на ваш адрес и порт сервера
+                client_socket.send(username.encode('utf-8'))
+                login_window.destroy()
+                chat_window()
+            else:
+                error_label.config(text='Неверный пароль.')
+        else:
+            error_label.config(text='Пользователь не зарегистрирован.')
+        conn.close()
+    else:
+        error_label.config(text='Введите имя пользователя и пароль.')
+
+# Функция для создания окна чата
+def chat_window():
+    global text_box, entry, chat_type
+    chat_window = Tk()
+    chat_window.title('Мессенджер')
+
+    text_box = Text(chat_window)
+    text_box.pack()
+
+    entry = Entry(chat_window)
+    entry.pack()
+
+    send_button = Button(chat_window, text='Отправить', command=send_message)
+    send_button.pack()
+
+    chat_type = IntVar()
+    group_chat_radio = Radiobutton(chat_window, text='Групповой чат', variable=chat_type, value=0)
+    group_chat_radio.pack()
+    individual_chat_radio = Radiobutton(chat_window, text='Индивидуальный чат', variable=chat_type, value=1)
+    individual_chat_radio.pack()
+
+    receive_thread = threading.Thread(target=receive_messages)
+    receive_thread.start()
+
+    chat_window.mainloop()
+
+# Функция для проверки формата электронной почты
+def is_valid_email(email):
+    # Проверка формата электронной почты на наличие символа '@' и на английский язык
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+# Функция для генерации случайного кода верификации
+def generate_verification_code():
+    return str(randint(100000, 999999))
+
+# Функция для отправки кода верификации по электронной почте
+def send_verification_code(email, code):
+    smtp_server = 'smtp.example.com'  # Замените настройками вашего SMTP-сервера
+    smtp_port = 587  # Замените настройками вашего SMTP-сервера
+    smtp_username = 'your_email@example.com'  # Замените настройками вашего SMTP-сервера
+    smtp_password = 'your_password'  # Замените настройками вашего SMTP-сервера
+
+    message = MIMEText(f'Ваш код верификации: {code}')
+    message['Subject'] = 'Код верификации'
+    message['From'] = 'your_email@example.com'  # Замените настройками вашего SMTP-сервера
+    message['To'] = email
+
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.sendmail(smtp_username, email, message.as_string())
+
+# Функция для регистрации нового пользователя
+def register():
+    username = entry_username.get()
+    password = entry_password.get()
+    email = entry_email.get()
+
+    if username and password and email:
+        if len(password) < 8:
+            error_label.config(text='Пароль должен содержать минимум 8 символов.')
+            return
+
+        if not is_valid_email(email):
+            error_label.config(text='Неверный формат электронной почты.')
+            return
+
+        verification_code = generate_verification_code()
+        send_verification_code(email, verification_code)
+        entered_verification_code = entry_verification_code.get()
+
+        if entered_verification_code == verification_code:
+            conn = sqlite3.connect('users.db')
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE username=?", (username,))
+            result = c.fetchone()
+            if result:
+                error_label.config(text='Пользователь уже зарегистрирован.')
+            else:
+                c.execute("INSERT INTO users (username, password, email) VALUES (?, ?, ?)", (username, password, email))
+                conn.commit()
+                conn.close()
+                error_label.config(text='Пользователь успешно зарегистрирован.')
+        else:
+            error_label.config(text='Неверный код верификации.')
+    else:
+        error_label.config(text='Введите все данные.')
+
+# Создание таблицы пользователей в базе данных SQLite
+def create_users_table():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (username TEXT, password TEXT, email TEXT)''')
+    conn.commit()
+    conn.close()
+
+# Окно авторизации
+login_window = Tk()
+login_window.title('Авторизация')
+
+create_users_table()  # Создание таблицы пользователей, если она не существует
+
+label_username = Label(login_window, text='Имя пользователя:')
+label_username.pack()
+
+entry_username = Entry(login_window)
+entry_username.pack()
+
+label_password = Label(login_window, text='Пароль:')
+label_password.pack()
+
+entry_password = Entry(login_window, show='*')
+entry_password.pack()
+
+login_button = Button(login_window, text='Войти', command=login)
+login_button.pack()
+
+register_label = Label(login_window, text='Регистрация')
+register_label.pack()
+
+label_email = Label(login_window, text='Email:')
+label_email.pack()
+
+entry_email = Entry(login_window)
+entry_email.pack()
+
+label_verification_code = Label(login_window, text='Код верификации:')
+label_verification_code.pack()
+
+entry_verification_code = Entry(login_window)
+entry_verification_code.pack()
+
+register_button = Button(login_window, text='Зарегистрироваться', command=register)
+register_button.pack()
+
+error_label = Label(login_window, text='')
+error_label.pack()
+
+login_window.mainloop()
